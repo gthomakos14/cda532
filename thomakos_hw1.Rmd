@@ -1,0 +1,313 @@
+---
+title: "CDA 532 - Homework 1 - Glenn Thomakos"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r include=FALSE}
+library(ISLR2)
+library(dplyr)
+library(rpart)
+library(arules)
+```
+
+1) Consider the “College” data in the ISLR2 package:
+- library(ISLR2)
+- data(College)
+- head(College)
+
+```{r}
+data(College)
+df_college = College
+head(df_college)
+```
+
+a) Present some visualizations of this data such as pair plots and histograms? Do you think any scaling or transformation is required?
+
+###########################################################################
+
+Some transformation is required since some of the columns are "rate" columns like Grad.Rate or Expend, while others like Accept and Enroll are just the total amount attributed to the college. 
+
+###########################################################################
+
+```{r}
+plot(df_college$Expend,df_college$Grad.Rate,
+     xlab='Expenditure per Student',
+     ylab='Graduation Rate',
+     main='Expenditure vs Graduation Rate')
+
+plot(df_college$Apps,df_college$Accept,
+     xlab='Total Applications',
+     ylab='Total Accepted',
+     main='Applications vs Accepted')
+
+plot(df_college$Accept,df_college$Enroll,
+     xlab='Total Accepted',
+     ylab='Total Enrolled',
+     main='Accepted vs Enrolled')
+```
+
+b) Scale the data appropriately (e.g., log transform) and present the
+visualizations in part A. Have any new relationships been revealed?
+
+###########################################################################
+
+From these two new plots we have new, more accurate information on acceptance and enrollment rates now that we've eliminated size of the university as something that we're tracking. It also elucidates the distribution in the data set of acceptance and enrollment rates.
+
+############################################################################
+
+```{r}
+df_college$Accept.Rate = df_college$Accept/df_college$Apps
+df_college$Enroll.Rate = df_college$Enroll/df_college$Accept
+
+# The first plot is removed here since it was a plot of two rate variables
+# against each other.
+plot(df_college$Apps,df_college$Accept.Rate,
+     xlab='Total Applications',
+     ylab='Acceptance Rate',
+     main='Applications vs Acceptance Rate')
+
+plot(df_college$Accept.Rate,df_college$Enroll.Rate,
+     xlab='Acceptance Rate',
+     ylab='Enroll Rate',
+     main='Accepted vs Enrolled')
+```
+
+c) Subset the data into two data frames: “private” and “public”. Save them as an*.RData file. Be sure these are the only two objects saved in that file. Submit it with you assignment.
+
+```{r}
+private = filter(df_college,Private=='Yes')
+public = filter(df_college,Private=='No')
+
+save(public,private,file='private_public_split.RData')
+```
+
+d) Within each new data frame, sort the observations in decreasing order by
+number of applications received.
+
+```{r}
+public = arrange(public,desc(Apps))
+private = arrange(public,desc(Apps))
+```
+
+e) Eliminate Universities that have less than the median number of HS students admitted from the top 25% of the class (“Top25perc”).
+
+```{r}
+med_25_public = median(public$Top25perc)
+med_25_private = median(private$Top25perc)
+
+public = filter(public,Top25perc>med_25_public)
+private = filter(private,Top25perc>med_25_private)
+```
+
+f) Create a new variable that categorizes graduation rate into “High”, “Medium” and “Low”, use a histogram or quantiles to determine how to create this variable. Append this variable to your “private” and “public” datasets.
+
+```{r}
+public = mutate(public,Grad.Category=ntile(Grad.Rate,3))
+public = public %>%
+        mutate(Grad.Category=case_when(
+                Grad.Category==3~'High',
+                Grad.Category==2~'Medium',
+                Grad.Category==1~'Low'))
+
+private = public = mutate(private,Grad.Category=ntile(Grad.Rate,3))
+private = private %>%
+        mutate(Grad.Category=case_when(
+                Grad.Category==3~'High',
+                Grad.Category==2~'Medium',
+                Grad.Category==1~'Low'))
+```
+
+g) Create a “list structure” that contains your two datasets and save this to an *.RData file. Make sure that your file contains only the list structure.
+
+```{r}
+df_list = list(public,private)
+save(df_list,file='df_list.RData')
+```
+
+2) You are going to derive generalized association rules to the marketing data from your book ESL. This data is in the available on UB learns. Specifically, generate a reference sample of the same size of the training set. This can be done in a couple of ways, e.g., (i) sample uniformly for each variable, or (ii) by randomly permuting the values within each variable independently. Build a classification tree to the training sample (class 1) and the reference sample (class 0) and describe the terminal nodes having highest estimated class 1 probability. Compare the results to the results near Table 14.1 (ESL), which were derived using PRIM.
+
+```{r}
+load('marketing.RData')
+
+marketing_shuffled = marketing
+marketing_shuffled$Income = sample(1:9,nrow(marketing),replace=TRUE)
+marketing_shuffled$Sex = sample(1:2,nrow(marketing),replace=TRUE)
+marketing_shuffled$Marital = sample(1:5,nrow(marketing),replace=TRUE)
+marketing_shuffled$Age = sample(1:7,nrow(marketing),replace=TRUE)
+marketing_shuffled$Edu = sample(1:6,nrow(marketing),replace=TRUE)
+marketing_shuffled$Occupation = sample(1:9,nrow(marketing),replace=TRUE)
+marketing_shuffled$Lived = sample(1:5,nrow(marketing),replace=TRUE)
+marketing_shuffled$Dual_Income = sample(1:3,nrow(marketing),replace=TRUE)
+marketing_shuffled$Household = sample(1:9,nrow(marketing),replace=TRUE)
+marketing_shuffled$Householdu18 = sample(1:9,nrow(marketing),replace=TRUE)
+marketing_shuffled$Status = sample(1:3,nrow(marketing),replace=TRUE)
+marketing_shuffled$Home_Type = sample(1:5,nrow(marketing),replace=TRUE)
+marketing_shuffled$Ethnic = sample(1:8,nrow(marketing),replace=TRUE)
+marketing_shuffled$Language = sample(1:3,nrow(marketing),replace=TRUE)
+
+# load('marketing.RData')
+marketing$class = 1
+marketing_shuffled$class = 0
+
+df_marketing = rbind(marketing,marketing_shuffled)
+df_marketing = df_marketing[sample(nrow(df_marketing)),]
+
+tree = rpart(class~.,data=df_marketing,method='class')
+tree
+```
+
+3) Consider the Boston Housing Data in the ISLR2 package.
+
+a) Visualize the data using histograms of the different variables in the data set. Transform the data into a binary incidence matrix, and justify the choices you make in grouping categories.
+
+###########################################################################
+
+Below are two histogram plots which represent the two archetypes of the variables. Crim has quite a few levels to it while chas only has two. Therefore, when transforming the data into a binary incidence matrix, the variables like crim that have a lot of levels need to be made into variables with fewer levels while variables like chas can simply be left alone. I'm also going to be dropping the 'lstat' variable since I have no earthly idea what the "lower status of the population" is supposed to mean.
+
+###########################################################################
+
+```{r}
+hist(Boston$crim)
+hist(Boston$chas)
+```
+
+crim: Separated using quantiles. I have no knowledge of crime stats so I just split them up into 4 groups of equal size. 
+
+```{r}
+crim_quantile = quantile(Boston$crim,probs=c(0.25,0.5,0.75))
+Boston$crim = ordered(cut(Boston$crim,                        c(0,crim_quantile[1],crim_quantile[2],crim_quantile[3],max(Boston$crim))), 
+                       labels=c('Low', 'Middle-Low', 'Middle-High','High'))
+```
+
+indus: Same as above. Separated into quantiles due to lack of domain knowledge.
+
+```{r}
+indus_quantile = quantile(Boston$indus,probs=c(0.25,0.5,0.75))
+Boston$indus = ordered(cut(Boston$indus,
+c(0,indus_quantile[1],indus_quantile[2],indus_quantile[3],max(Boston$indus))),
+                labels=c('Low','Middle-Low','Middle-High','High'))
+```
+
+nox: Split according to this EPA document,
+
+https://www.airnow.gov/sites/default/files/2018-06/no2.pdf
+
+Note that the units in the document are parts per billion while the nox column is in parts per 10 million. This is accounted for. For abbreviation of code, anything above "moderate" is not considered since it isn't present in the dataset.
+
+```{r}
+Boston$nox = ordered(cut(Boston$nox,
+                         c(0,0.5,1)),
+                         labels=c('Good','Moderate'))
+```
+
+rm: From simple domain knowledge, we can say that a "standard" home has a kitchen, dining room, living room, and at least 2 bedrooms. So 5 rooms is what I'll consider a normally sized house. Add in a family room and another bedroom or two and 7 is when we start to have a "large" house. Therefore, 0, 5, 7, MAX will be my cutoffs. 
+
+```{r}
+Boston$rm = ordered(cut(Boston$rm,
+                        c(0,5,7,max(Boston$rm)),
+                        labels=c('Small','Medium','Large')))
+```
+
+age: Now we return back to an area where my lack of domain knowledge shows. Quantiles is what we'll use again.
+
+```{r}
+age_quantile = quantile(Boston$age,probs=c(0.25,0.5,0.75))
+Boston$age = ordered(cut(Boston$age,                       c(0,age_quantile[1],age_quantile[2],age_quantile[3],max(Boston$age)),
+                         labels=c('New','Middle-New','Middle-Old','Old')))
+```
+
+dis: Since I don't know the units measured here, nor do I have commute time (which I'd consider more important than the distance and can vary wildly given traffic and weather conditions), I'm going to throw my hands up and go with quantiles yet again. But frankly I'm tired of reformatting each cell so that the quantiles can fit in neatly and still print out on a pdf so I'm just going with 3 quantiles for this and subsequent variables. The following association rules may suffer, but given that this assignment is meant to see if I know how to implement these things, I can take some shortcuts if I'm aware that they're shortcuts.
+
+```{r}
+dis_quantile = quantile(Boston$dis,probs=c(0.33,0.67))
+Boston$dis = ordered(cut(Boston$dis,
+                  c(0,dis_quantile[1],dis_quantile[2],max(Boston$dis)),
+                         labels=c('Close','Average','Far')))
+```
+
+ptratio: I grew up with a high school that had about 25-30 kids per class, and the max here is 22 so maybe I'm just out of touch with 70's Boston education standards. Quantiles it is then.
+
+```{r}
+pt_quantile = quantile(Boston$ptratio,probs=c(0.33,0.67))
+Boston$ptratio = ordered(cut(Boston$ptratio,
+                     c(0,pt_quantile[1],pt_quantile[2],max(Boston$ptratio)),
+                     labels=c('Small','Medium','Large')))
+```
+
+medv: If my previous experience in education wasn't enough then I'm not even going to pretend like I have the domain knowledge necessary to eyeball lines of demarcation for cheap or expensive homes in 70's Boston would be.
+
+```{r}
+medv_quantile = quantile(Boston$medv,probs=c(0.33,0.67))
+Boston$medv = ordered(cut(Boston$medv,
+                    c(0,medv_quantile[1],medv_quantile[2],max(Boston$medv)),
+                    labels=c('Cheap','Average','Expensive')))
+```
+
+```{r}
+Boston$lstat = NULL
+# These need to be taken as factors otherwise it gives me problems.
+Boston$zn = as.factor(Boston$zn)
+Boston$chas = as.factor(Boston$chas)
+Boston$rad = as.factor(Boston$rad)
+Boston$tax = as.factor(Boston$tax)
+
+df_boston = Boston
+Boston = as(Boston, "transactions")
+```
+
+b) Visualize the data using the itemFrequencyPlot in the “arules” package. Apply the apriori algorithm (Do not forget to specify parameters in your write up).
+
+###############################################################################
+
+Item frequency plot is used with a deliberately high support just so the plot is still readable.
+
+###############################################################################
+
+```{r}
+itemFrequencyPlot(Boston,support=0.25,cex.names=0.7)
+```
+
+```{r include=FALSE}
+rules  = apriori(Boston, parameter=list(support=0.12,confidence=0.6))
+
+# It didn't print out in the summary, but it does print out in the console
+# that there are 14,350 rules.
+
+# summary(rules)
+```
+
+c) A student is interested is a low crime area, but wants to be as close to the city as possible (as measured by “dis”). What can you advise on this matter through the mining of association rules?
+
+###############################################################################
+
+Since the apriori algorithm didn't kick out anything from its over 14,000 rules I went digging into the data frame itself. There's only 4 of the 506 suburbs (that's 0.8%) so it just didn't have the support high enough to even be considered for the algorithm to consider it a rule. Lowering the threshold would help with this, but it would also increase compute time.
+
+###############################################################################
+```{r}
+conditions = c('crim=Low','dis=Close')
+rules_crim = subset(rules,subset=lhs %ain% conditions)
+rules_crim
+```
+
+```{r}
+filter(df_boston,crim=='Low' & dis=='Close')
+```
+
+d) A family is moving to the area, and has made schooling a priority. They want
+schools with low pupil-teacher ratios. What can you advise on this matter through the mining of association rules?
+
+###############################################################################
+
+There's one rule in particular here that's the most important to me. That's the rule with the 5th highest confidence (and 5th highest lift), which is that a low ptratio often comes in an expensive area. But on the bright side, it also implies it's in an area with a low amount of industry. So silver linings I guess?
+
+###############################################################################
+```{r}
+pt_rules = subset(rules,subset=rhs %in% 'ptratio=Small')
+```
+
+```{r}
+inspect(head(sort(pt_rules, by = "confidence"), n = 5))
+```
+
