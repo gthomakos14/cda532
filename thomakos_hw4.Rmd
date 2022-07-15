@@ -1,0 +1,198 @@
+---
+title: "CDA 532 - Homework 4 - Glenn Thomakos"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r include=FALSE}
+library(bnlearn)
+library(Rgraphviz)
+library(ggm)
+library(ggdag)
+library(gRbase)
+library(gRain)
+library(dplyr)
+library(glasso)
+```
+
+1. Consider the "cad1" dataset in the package gRbase. These observations are from individuals in the Danish Heart Clinic.
+
+```{r}
+data(cad1)
+cad1 = select(cad1,-c('QWavecode','STcode','SuffHeartF'))
+```
+
+a. Learn a Bayesian network using a structural learning knowledge, and prior knowledge obtained through the definitions of the variables in the help files. You do not have to use all of the variables. Make sure to detail your network construction process.
+
+ -- The network pictured below is learned using the Chow-Liu algorithm which is defined in the bnlearn package. We will be dropping the"QWavecode" and "STcode" columns since, even though they are helpful for the dataset, they clutter up the graph and they'll be better served off of the plot.
+ 
+Ultimately, my goal here was to have everything feed into CAD one way or another. Several of them feed directly into it while others, such as Heartfail, take a step or two to get there.
+ 
+```{r}
+bayes_net = chow.liu(cad1)
+plot(bayes_net)
+```
+
+b. Construct the above network in R, and infer the Conditional Probability Tables using the cad1 data (Hint: extractCPT or cpttable may be used from the gRain package). Identify any d-separations in the graph.
+
+ -- It's plain to see from this graph below are with Heartfail and Inherit, given information on the two nodes intercepting them and CAD, namely Hypertrophi and AngPec.
+
+```{r}
+g = list(~Heartfail,~Inherit,~Hypertrophi|Heartfail,~AngPec|Inherit,
+         ~CAD|Sex:AngPec:AMI:QWave:STchange:Hypertrophi:Hyperchol:Smoker)
+caddag = dagList(g)
+plot(caddag)
+dSep(as(caddag,'matrix'),'Inherit','CAD','AngPec')
+cpt = extractCPT(cad1,caddag,smooth=TRUE)
+```
+
+c. Suppose it is known that a new patient is female with Hypercholesterolemia (high cholesterol). Absord this evidence into the graph and revise the probabilities. How does the probability of heart-failure and coronary heart disease (CAD) change after this information is taken into account?
+
+ -- Below are printed the probabilities after this new entry is added. As is to be expected from the graph, Heartfail remains unchanged while CAD is the one that receives a shift in its probabilities, albeit a fairly small shift.
+
+```{r}
+compiled_table = grain(compileCPT(cpt))
+compiled_table_plus = setFinding(compiled_table,nodes=c('Hyperchol','Smoker'),
+                                 states=c('Yes','Yes'))
+querygrain(compiled_table,nodes=c('Heartfail','CAD'),type='marginal')
+querygrain(compiled_table_plus,nodes=c('Heartfail','CAD'),type='marginal')
+```
+
+d. Simulate a new data set with 100 observations, either conditional upon this information in c using the original parameterization. Present this new data in a table. Estimate the probability of "Smoker" and "CAD" given the other variables in your model. (Hint: you may try simulate.grain from the gRain package, you may use predict.grain as well).
+
+```{r}
+df_simulated = simulate(compiled_table,n=100)
+pred = predict(compiled_table,response=c('Smoker','CAD'),newdata=df_simulated)
+
+print('Smoker Probability')
+sum(pred$pred$Smoker=='Yes')/100
+print('CAD Probability')
+sum(pred$pred$CAD=='Yes')/100
+```
+
+2. The sinking of the Titanic is a famous event in history. The titanic data was collected by the British Board of Trade to investigate the sinking. Many well-known facts, from the proportions of first class passengers to the women and children first policy, and the fact that that policy was not entirely successful in saving the women and children in the third class, are reflected in the survival rates for each classes of passenger. You have been petitioned to investigate this data. Analyze this data with tools that we learned in class. Summarize your findings for British Board of Trade.
+
+In your report, please touch on the following questions. Is there evidence that women and children were evacuated first? What characteristics/demographics are more likely in surviving passengers? What characteristics/demographics are more likely in passengers that perished? How do your results support the popular movie "Titanic" (1997)? For example, what is the probability that Rose (1st class adult and female) would survive and Jack (3rd class adult and male) would not survive?
+
+```{r}
+df_titanic = read.csv('titanic.csv')
+```
+
+-- First things first, we're going to need a new column that designates the passenger as a child or not. Typically, the age cutoff of childhood would be 18 or 21 years old. However, the ship is sinking and you don't have time to check someone's birth certificate so we're going to lower that to 15.
+
+We're also going to be adding a 'Female' column just since it makes the aggregation a little bit easier along the line.
+
+```{r}
+df_titanic$Child = as.integer(df_titanic$Age<=15)
+df_titanic$Female = as.integer(df_titanic$Sex=='female')
+```
+
+-- Next up is getting some basic information on the splits between those that survived and those that didn't. The original data frame has information on 887 passengers total. Filtering that down based off of the "Survived" column yields 342 rows in the survival data frame (represents 38.56% of the passengers) and 545 in the perishing data frame (the other 61.44%).
+
+```{r}
+df_survived = filter(df_titanic,Survived==1)
+df_died = filter(df_titanic,Survived==0)
+```
+
+-- Now we are finally well equipped to answer the first question of whether or not women and children were evacuated first. We're just going to be looking at survival rate here since there's no way of knowing when each person was evacuated to the lifeboats.
+
+We can see that each demographic increased the chance of survival from the base of 38.56% up to the respective rates you see below. Surprisingly, children didn't have as high a survival rate as I would have expected but I think if I progressively lowered the age requirement we'd see a much higher survival rate. As a direct answer to the question of "were women and children prioritized?" The answer is a clear yes, especially in the case of women.
+
+```{r}
+print('Child Survival Rate:')
+mean(filter(df_titanic,Child==1)$Survived)
+print('Woman Survival Rate:')
+mean(filter(df_titanic,Child==0 & Sex=='female')$Survived)
+print('Woman or Child Survival Rate:')
+mean(filter(df_titanic,Sex=='female' | Child==1)$Survived)
+```
+ -- Now let's address Jack and Rose since the methods of discerning whether or not they'd survive are similar to the ones above. We're going to filter on the overall dataset and check to see the survival rate of passengers who had similar characteristics to them.
+ 
+ We can tell from these rates below that it doesn't look good for Jack but it looks quite good for Rose (though partially due to her selfishness not allowing him on the door).
+ 
+```{r}
+print("Jack's Survival Rate")
+mean(filter(df_titanic,Pclass==3 & Child==0 & Sex=='male')$Survived)
+
+print("Rose's Survival Rate")
+mean(filter(df_titanic,Pclass==1 & Child==0 & Sex=='female')$Survived)
+```
+
+ -- Finally we're going to be answering the question of what's more common in the surviving passengers as opposed to the ones who died. This will be done graphically by overlaying density plots for a few variables and then a histogram comparing the two sexes' survival rates as well as the survival rate of children vs adult.
+ 
+It's clear to see in all of these plots, with the exception of age, that these conditions have a clear impact on whether or not you'd have survived the sinking of the ship if you were in one of these groups. The age graph is in here as an illustration of the graphs that I did not select, namely the siblings and parents columns, which had similar looks to the age graph and were deemed not significant enough a gap between the "survived" and "died" groups.
+z0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa vvvvvvvvvvv             
+```{r}
+plot(density(df_died$Age),col='red',
+     main='Age Comparison of Died and Survived',
+     xlab='Age')
+lines(density(df_survived$Age),col='blue')
+legend(50,0.035,legend=c('Died','Survived'),col=c('red','blue'),lty=1)
+
+plot(density(df_died$Pclass),col='red',
+     main='Class Comparison of Died and Survived',
+     xlab='Class')
+lines(density(df_survived$Pclass),col='blue')
+legend(1.5,1.2,legend=c('Died','Survived'),col=c('red','blue'),lty=1)
+
+plot(density(df_died$Fare),col='red',
+     main='Fare Comparison of Died and Survived',
+     xlab='Fare')
+lines(density(df_survived$Fare),col='blue')
+legend(150,0.05,legend=c('Died','Survived'),col=c('red','blue'),lty=1)
+
+male_hist = filter(df_titanic,Sex=='male')$Survived
+female_hist = filter(df_titanic,Sex=='female')$Survived
+hist(male_hist,col=rgb(0,0,1,0.2),
+     main='Survival Based on Sex',
+     xlab='Survived')
+hist(female_hist,col=rgb(1,0,0,0.2),add=TRUE)
+
+child_hist = filter(df_titanic,Child==1)$Survived
+adult_hist = filter(df_titanic,Child==0)$Survived
+hist(adult_hist,col=rgb(0,0,1,0.2),
+     main='Survival Based on Age',
+     xlab='Survived')
+hist(child_hist,col=rgb(1,0,0,0.2),add=TRUE)
+```
+
+3. Specify the structure of a Bayesian Network that contains four nodes {W,X,Y,Z} and satisfies the following set of independencies.
+
+ -- I apologize for not having the independencies listed here, but my pdf print absolutely revolts anytime it sees any semblance of LaTeX.
+ 
+```{r}
+g = list(~W,~X,~Y|W:X,~Z|Y:X)
+dag_3 = dagList(g)
+plot(dag_3)
+
+```
+
+4. Data released from the US Department of Commerce, Bureau of the Census is available in R. 
+ - data(state)
+ - head(state)
+Build a Graphical Model using the Graphical Lasso for the 8 predictors (Population, Income, Illiteracy, Life Expectancy, Murder, HS Grad, Frost, Area), using a range of penalties. What do you find for different penalties, and how does it compliment (and/or contradict) a model fit with SOM?
+
+ -- As the penalty gets higher, the graph becomes far more sparse in terms of connections, from a fully connected one with rho=5 all the way up to a quite sparse plot with rho at 100,000. 
+ 
+A graphical model such as the one created below is beneficial when used in conjunction with an SOM since the graphical model will have its focus on the variables themselves as opposed to SOM which focuses on the entries.
+
+```{r}
+data(state)
+df_state = data.frame(state.x77)
+# df_state
+```
+
+```{r}
+cov_matrix = cov(df_state)
+rho_list = c(5,12,1200,12000,24000,76000,100000)
+for(i in rho_list){
+        glasso_10 = glasso(cov_matrix,rho=i)
+        edges = glasso_10$wi!=0
+        diag(edges) = 0
+        glasso_graph = as(edges,'graphNEL')
+        nodes(glasso_graph) = colnames(cov_matrix)
+        plot(glasso_graph,main=paste('Rho=',i))
+}
+```
+
