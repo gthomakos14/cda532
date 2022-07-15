@@ -1,0 +1,229 @@
+---
+title: "CDA 532 - Homework 2 - Glenn Thomakos"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r include=FALSE}
+library(dplyr)
+library(recommenderlab)
+library(cluster)
+library(kohonen)
+library(fossil)
+```
+
+1. Consider the MovieLense data that is available in the recommenderlab package
+~data(MovieLense)
+~?MovieLense
+
+```{r}
+data(MovieLense)
+?MovieLense
+```
+
+The data was collected through the MovieLens web site during a seven-month, and contains about 100,000 ratings (1-5) from 943 users on 1664 movies. See the help file on the data to understand how to best manipulate the object.
+
+Design and evaluate your own recommendation system based on the following principles: For each user i and each movie j they did not see, find the k most similar users to i who have seen j and then use them to infer the user i’s rating on the movie. Handle all exceptions in a reasonable way and report your strategy if you did so; e.g., if you cannot find k users for some
+movie j, then take all users that have seen it.
+
+Create the system so that outputs a user’s top ten recommendations. Demo it on 3 users.
+
+############################################################################
+
+ -- Due to the fact that I simply can't help myself when it comes to movies, I decided to add myself as user number 944 in this dataset. I rated 42 movies(even though I've seen quite a few of these, but sifting through over 1600 movies isn't my idea of a good time) and inserted my ratings using the same format as the original data.
+
+As for the guiding philosophies suggested above, this is just user-based collaborative filtering, so the model is created with this in mind.
+
+Furthermore, the model recommended for me Cinderella and the original Cape Fear back to back which I found amusing. I expect this is due to the relatively small amount of movies I rated, several of which were Disney and Scorsese movies so it should come as no surprise that the recommendations included Disney movies and a movie that Scorsese remade.
+
+############################################################################
+
+```{r}
+load('glenn_rating.RData')
+MovieLense = 
+  as(rbind(as(MovieLense,'data.frame'),glenn_rating),'realRatingMatrix')
+```
+
+```{r}
+recommender = Recommender(MovieLense,method='UBCF')
+recommendations = predict(recommender,MovieLense[942:944],n=10)
+
+as(recommendations,'list')
+```
+
+2. Data released from the US department of Commerce, Bureau of the Census is available in R (see, data(state) ).
+
+```{r}
+data(state)
+?state
+```
+
+(a) Focus on the data Population, Income, Illiteracy, Life Exp, Murder, HS Grad, Frost, Area. Cluster this data using hierarchical clustering. Keep the class labels (region, or state name) in mind, but do not use them in the modeling. Report your detailed findings. ** You may have done this step in an earlier assignment.
+
+############################################################################
+
+ -- We can see from this plot below that 2 clusters appears to be the way to go. However, further investigation shows that the 2 clusters are Alaska and the rest of the 49 states which just isn't going to cut it. Even with 3 clusters it just separates Texas from those 49 states. Only when we take 4 clusters is there some sort of meaningful delineation (even though Texas and Alaska are still in a league of their own).
+
+############################################################################
+
+```{r}
+# Thank you for this code. Taken from the computational lab.
+d = dist(state.x77)
+hc = hclust(d,method='ave')
+store <- c()
+for (i in 2:10){
+	ct = cutree(hc, k=i)
+	si = silhouette(ct, dist = d)
+	avg_width = summary(si)$avg.width
+	store = c(store, avg_width)
+}
+plot(2:10,store,
+     main='k-clusters vs Avg Width',
+     xlab='k-clusters',
+     ylab='Avg Width')
+```
+
+############################################################################
+
+ -- Below we have the results of k=7. Aside from Alaska and Texas being isolated there's some groups that do make some sort of sense. There's no states in the same group where I want to disagree with it, although it is curious to me that Washington and Oregon are in different groups.
+
+############################################################################
+
+```{r}
+cutree(hc,k=7)
+```
+
+(b) Focus on the data Population, Income, Illiteracy, Life Exp, Murder, HS Grad, Frost, Area. Cluster this data using SOM. Keep the class labels (region, or state name) in mind, but do not use them in the modeling. Report your detailed findings. ** You may have done this step in an earlier assignment.
+
+############################################################################
+
+ -- Using the same amount of clusters as above (I really wish it wasn't a prime number. I feel silly having 7x1 dimensions), the data is clustered yet again and again we have Texas and Alaska being on their own entirely. There's some shifts in how everything is collected but as before if they were clustered this way manually they could all be easily defensible choices.
+
+############################################################################
+
+```{r}
+set.seed(12)
+som_grid = somgrid(xdim=7,ydim=1,topo='rectangular')
+state_som = som(state.x77,grid=som_grid,rlen=1200)
+
+as.matrix(data.frame('State'=state.x77[,0],
+           'Cluster'=state_som$unit.classif))
+```
+c) Describe some of the advantages between the two above approaches in the context of this problem, and more generally.
+
+############################################################################
+
+ -- SOM benefits from having a bunch more visualizations at its disposal as well as more parameters. With this comes a potentially more complicated model which lends itself to higher dimensional data. 8 columns isn't exactly high dimensional but there is a benefit of being able to use a more complicated model as opposed to the hierarchical clustering.
+
+############################################################################
+
+3. Consider the Iris data (>data(iris)).
+
+```{r}
+data(iris)
+?iris
+```
+
+(a) Create a plot using the first two principal components, and color the iris species by class.
+
+```{r}
+features = iris[,1:4]
+y = iris[,5]
+features_scaled = scale(features)
+
+pr_comps = prcomp(features_scaled,center=FALSE,scale=FALSE)
+df_pr_comps = data.frame('pc_1'=pr_comps$x[,1],
+                         'pc_2'=pr_comps$x[,2])
+
+# Virginica: Black
+# Setosa: Red
+# Versicolor: Yellow
+
+colors_list = rep('black',length(y))
+color1 = which(y=='setosa')
+colors_list[color1] = 'red'
+color2 = which(y=='versicolor')
+colors_list[color2] = 'yellow'
+
+plot(df_pr_comps$pc_1,df_pr_comps$pc_2,
+     col=colors_list,
+     main='Principal Components of Iris',
+     xlab='1st Principal Component',
+     ylab='2nd Principal Component',
+     pch=16)
+```
+
+(b) Perform k-means clustering on the first two principal components of the iris data. Plot the clusters different colors, and the specify different symbols to depict the species labels.
+
+############################################################################
+
+ -- Even though there's no specification for the number of clusters to be created, it's the iris dataset so it was no great difficulty to just call it 2 or 3 clusters.
+
+############################################################################
+
+```{r}
+# Thank you for asking for different symbols. The default colors
+# don't work very well with my color blindness. :(
+
+df_current = df_pr_comps[,c('pc_1','pc_2')]
+km_2 = kmeans(df_current,centers=2)
+km_3 = kmeans(df_current,centers=3)
+
+plot(df_current,pch=km_2$cluster,
+     main='k-means k=2',
+     xlab='Principal Component 1',
+     ylab='Principal Component 2')
+
+plot(df_current,pch=km_3$cluster,
+     main='k-means k=3',
+     xlab='Principal Component 1',
+     ylab='Principal Component 2')
+```
+
+(c) Use rand index and adjusted rand index to assess how well the cluster assignments capture the species labels.
+
+```{r}
+# k=2
+print('Rand Index for k=2')
+rand.index(km_2$cluster, as.numeric(iris$Species))
+print('Adjusted Rand Index for k=2')
+adj.rand.index(km_2$cluster, as.numeric(iris$Species))
+
+# k=3
+print('Rand Index for k=3')
+rand.index(km_3$cluster, as.numeric(iris$Species))
+print('Adjusted Rand Index for k=3')
+adj.rand.index(km_3$cluster, as.numeric(iris$Species))
+```
+
+(d) Use the gap statistic and silhouette plots to determine the number of clusters.
+
+```{r}
+# There's been a lot of 7 in this homework so that's going to be K.max.
+plot(clusGap(df_pr_comps,kmeans,K.max=7),
+     main='Gap Statistic of k=1:7')
+```
+
+```{r}
+d = dist(df_pr_comps)
+store = c()
+for (i in 2:7){
+	km = kmeans(df_pr_comps,centers=i)$cluster
+	si = silhouette(km, dist = d)
+	avg_width = summary(si)$avg.width
+	store = c(store, avg_width)
+}
+plot(2:7,store,
+     main='k-clusters vs Avg Width',
+     xlab='k-clusters',
+     ylab='Avg Width')
+```
+
+(e) Reflect on the results, especially c-d. What does this tell us about the clustering?
+
+############################################################################
+
+ -- If I didn't know anything about this dataset, I'd be absolutely positive that it only had two classes. The only thing that says there's 3 clusters is the Rand index and even then, the adjusted rand index says otherwise. The visualizations are the most descriptive thing for me, it's plainly obvious that there's a WIDE margin between two clusters.
+
+############################################################################
