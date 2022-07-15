@@ -1,0 +1,169 @@
+---
+title: "CDA 532 - Homework 3 - Glenn Thomakos"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r include=FALSE}
+# library(dplyr)
+library(ISLR2)
+```
+
+1. ISLR2 Chapter 12 #4:
+
+Suppose that for a particular dataset, we perform hierarchical clustering using single linkage and complete linkage. We obtain two dendrograms.
+
+a. At a certain point on the single linkage dendrogram, the clusters {1,2,3} and {4,5} fuse. On the complete linkage dendrogram, the clusters {1,2,3} and {4,5} also fuse at a certain point. Which fusion will occur higher on the tree, or will they fuse at the same height, or is there not enough information to tell?
+
+- Not enough information is known. 
+
+b. At a certain point on the single linkage dendrogram, the clusters {5} and {6} fuse. On the complete linkage dendrogram, the clusters {5} and {6} also fuse at a certain point. Which fusion will occur higher on the tree, or will they fuse at the same height, or is there not enough information to tell?
+
+- They will merge at the same height.
+
+2. ISLR Chapter 12 #10:
+
+In this problem you will generate simulated data, and then perform PCA and K-means clustering on the data.
+
+a. Generate a simulated dataset with 20 observations in each of three classes (i.e. 60 observations total), and 50 variables.
+
+```{r}
+set.seed(12)
+
+df_12 = data.frame(matrix(rnorm(1000,mean=12),nrow=20))
+df_12$label = rep(12,times=20)
+
+df_7 = data.frame(matrix(rnorm(1000,mean=7),nrow=20))
+df_7$label = rep(7,times=20)
+
+df_3 = data.frame(matrix(rnorm(1000,mean=3),nrow=20))
+df_3$label = rep(3,times=20)
+
+df = rbind(rbind(df_12,df_7),df_3)
+```
+
+b. Perform PCA on the 60 observations and plot the first two principal component score vectors. Use a different color to indicate the observations in each of the three classes. If the three classes appear separated in this plot, then continue on to part (c). If not, then return to part (a) and modify the simulation so that there is greater separation between the three classes. Do not continue to part (c) until the three classes show at least some separation in the first two principal component score vectors.
+
+```{r}
+X = df[,1:50]
+y = df[,51]
+
+X_pc = prcomp(X)
+df_pc = data.frame('pc_1'=X_pc$x[,1],
+                   'pc_2'=X_pc$x[,2])
+
+# 12: Black
+# 7: Red
+# 3: Yellow
+
+colors_list = rep('black',length(y))
+color1 = which(y==7)
+colors_list[color1] = 'red'
+color2 = which(y==3)
+colors_list[color2] = 'yellow'
+```
+
+```{r}
+plot(df_pc$pc_1,df_pc$pc_2,
+     col=colors_list,
+     main='Principal Components of Simulated Data',
+     xlab='1st Principal Component',
+     ylab='2nd Principal Component')
+```
+
+c. Perform K-means clustering of the observations with K=3. How well do the clusters you obtained in K-means clustering compare to the true class labels?
+
+ -- The data clustered very well which is to be expected given how stratified I made the data, there really shouldn't be any overlap at all given the raw data. I will, however, point out that with some seeds, the data doesn't cluster perfectly as it should. Typically I use a seed of 12 but that was one of the problematic ones. It placed both the 3 and 7 labelled entries into one cluster, then split the 12 labelled ones.
+ 
+```{r}
+set.seed(123)
+km_c = kmeans(X,centers=3)
+table(km_c$cluster,y)
+```
+
+d. Perform K-means clustering with K=2. Describe your results.
+
+ -- These results seem intuitive now that they're in front of me. I'd be willing to bet that if I had entries with a mean of 10 they'd be clustered with the 12 data instead. 
+
+```{r}
+set.seed(123)
+km_d = kmeans(X,centers=2)
+table(km_d$cluster,y)
+```
+
+e. Now perform K-means clustering with K=4, and describe your results.
+
+ -- Now you see why I mentioned the changing of the seeds earlier on. The simulated data with a label of 12 gets split up when K=4. This is most likely due to the random nature of the simulated data, and I would expect, if I ran this experiment again, that some other tearing happens within the clusters, and it's just the way the data happened to fall. 
+
+```{r}
+set.seed(123)
+km_e = kmeans(X,centers=4)
+table(km_e$cluster,y)
+```
+
+f. Now perform K-means clustering with K=3 on the first two principal components score vectors, rather than on the raw data. That is, perform K-means clustering on the 60 x 2 matrix of which the first column is the first principal component score and the second column is the second principal component score vector. Comment on the results.
+
+ -- Yet again we've got perfect classification in the clustering, which is to be expected given the huge margins from the principal component plot shown above. I will note, however, there is similar tearing given specific seeds (yet again, my beloved seed=12) which again splits up the entries with a label of 12.
+
+```{r}
+set.seed(123)
+km_f = kmeans(df_pc,centers=3)
+table(km_f$cluster,y)
+```
+
+g. Use the scale() function, perform K-means clustering with K=3 on the data after scaling each variable to have standard deviation one. How do these results compare to data obtained in (b)? Explain.
+
+ -- The classification remains perfect due in large part to the heavily stratified nature of the data. Even with the scaling, there is a clear delineation in the data from the simulation earlier on. 
+ 
+```{r}
+X_scaled = scale(X)
+set.seed(123)
+km_g = kmeans(X_scaled,centers=3)
+table(km_g$cluster,y)
+```
+
+3. On the book website, wwww.statlearning.com, there is a gene expression dataset (Ch12Ex13.csv) that consists of 40 tissue samples with measurements on 1,000 genes. The first 20 samples are from healthy patients, while the second 20 are from a diseased group.
+
+a. Load in the data using read.csv(). You will need to select header=F.
+
+```{r}
+df_tissue = read.csv('Ch12Ex13.csv',header=FALSE)
+```
+
+b. Apply hierarchical clustering to the samples using correlation-based distance, and plot the dendrogram. Do the genes separate the samples into the two groups? Do your results depend on the type of linkage used?
+
+ -- Below are three dendrogram plots, each done with three different forms of linkages. The plot with complete linkage is the most distinct of the three while the average and single linkage are very similar in nature. However, all three methods of linkage were able to correctly cluster the dataset into the two distinct groups.
+
+```{r}
+hc_complete = hclust(dist(cor(df_tissue)),method='complete')
+plot(hc_complete,cex=0.65,xlab='Correlation Based Distance')
+```
+
+```{r}
+hc_single = hclust(dist(cor(df_tissue)),method='single')
+plot(hc_single,cex=0.65,xlab='Correlation Based Distance')
+```
+
+```{r}
+hc_average = hclust(dist(cor(df_tissue)),method='average')
+plot(hc_average,cex=0.65,xlab='Correlation Based Distance')
+```
+
+c. Your collaborator wants to know which genes differ the most across the two groups. Suggest a way to answer this question and apply it here.
+
+ -- First, we will separate the healthy and the sick entries in the dataset, then take the difference between the two. After that, we can simply take the mean of each row. A larger negative value suggests that gene is more likely to be found within the sick group while a larger positive value suggests the sample was taken from a healthy subject.
+ 
+Below is printed the top 6 genes which have the largest bent towards those that are sick. Avg is the column to use to see how far off they are.
+
+```{r}
+row.names(df_tissue) = 1:1000
+df_healthy = df_tissue[,1:20]
+df_sick = df_tissue[,21:40]
+
+df_difference = df_healthy-df_sick
+df_difference$avg = rowMeans(df_difference)
+
+head(df_difference[order(df_difference$avg),])
+```
+
